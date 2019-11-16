@@ -1,6 +1,7 @@
 ---
 title: "Predicting Restaurant Popularity in Metropolitan Areas from Yelp Statistics"
 output: pdf_document
+author: Claire Yang, Hayden Sansum, Nikhil Vanderklaauw
 fig_caption: yes
 header-includes:
  \usepackage{float}
@@ -44,7 +45,7 @@ Further possible questions:
 
 # Data Preprocessing
 
-**NOTE:** Much of the data processing was performed in Python for performance reasons as many of the initial JSON datasets were >5GB in size. This created issues with storing data in RAM and hence the approach used was to yield chunks of data at a time, storing only subsets. The python data processing code can be found in the Appendix (section 1.2) for further details and to ensure proper recording and reproducibility of code from this report.
+**NOTE:** Much of the data processing was performed in Python for performance reasons as many of the initial JSON datasets were >5GB in size. This created issues with storing data in RAM and hence the approach used was to yield chunks of data at a time, storing only subsets. The python data processing code can be found in the Appendix (section 1.3) for further details and to ensure proper recording and reproducibility of code from this report.
 
 ### Flow
 
@@ -156,12 +157,12 @@ The total sum of check-in's and reviews for a business is divided by how long th
 vy <- read.csv("data/vegas_yelp_dataset.csv")
 ```
 
-```{r, echo=FALSE}
+```{r, fig.height = 6, fig.width = 14, echo=FALSE}
 vy$popularity <- (vy$review_count_business + vy$checkin_count) / vy$months_open
 
 # explore distribution of 'popularity' response variable
 popularity = vy$popularity
-knitr::kable(summary(popularity))
+knitr::kable(summary(data.frame(popularity)))
 hist(popularity, main="Distribution of Popularity",col="grey")
 
 # look at the spread of popularity for businesses with 
@@ -187,29 +188,13 @@ The median popularity of restaurants is approximately 4.41 and 75% of restaurant
 
 ## Exploring Predictors   
 
-Not all features included in the dataset may be suitable for predicting popularity of restaurants: for example, certain features may have too many missing observations or several features may be highly correlated with one another. Here we explore 1) how certain features are distributed across businesses 2) missingness and potential multicollinearity issues in predictors 2) relationship between popularity and the predictors 
+Not all features included in the dataset may be suitable for predicting popularity of restaurants: for example, certain features may have too many missing observations or several features may be highly correlated with one another. Here we explore 1) how certain features are distributed across businesses 2) missingness and potential multicollinearity issues in predictors 2) relationship between popularity and the predictors.
+
+Here we've included just the first four predictors within the dataset as an example - however a comprehensive list of all feature distributions can be found in the Appendix (section 1.2).
 
 ```{r, echo=FALSE}
 vy_summary <- summary(vy)
 knitr::kable(vy_summary[,1:4])
-knitr::kable(vy_summary[,5:8])
-knitr::kable(vy_summary[,9:12])
-knitr::kable(vy_summary[,13:16])
-knitr::kable(vy_summary[,17:20])
-knitr::kable(vy_summary[,21:24])
-knitr::kable(vy_summary[,25:28])
-knitr::kable(vy_summary[,29:32])
-knitr::kable(vy_summary[,33:36])
-knitr::kable(vy_summary[,37:40])
-knitr::kable(vy_summary[,41:44])
-knitr::kable(vy_summary[,45:48])
-knitr::kable(vy_summary[,49:52])
-knitr::kable(vy_summary[,53:56])
-knitr::kable(vy_summary[,57:60])
-knitr::kable(vy_summary[,61:64])
-knitr::kable(vy_summary[,65:68])
-knitr::kable(vy_summary[,69:72])
-knitr::kable(vy_summary[,73:77])
 ```
 
 ## Distribution of Predictors across Businesses
@@ -230,8 +215,8 @@ category_df = as.data.frame(category_table)
 colnames(category_df)[colnames(category_df)=="Var1"] <- "Category"
 colnames(category_df)[colnames(category_df)=="Freq"] <- "Frequency"
 
-category_df <- category_df[order(category_df$Frequency, decreasing = TRUE),][1:15,]
-knitr::kable(category_df)
+category_df <- category_df[order(category_df$Frequency, decreasing = TRUE),]
+knitr::kable(category_df[1:15,])
 ```
 
 There are `r n_topcategories` different food categories. We may wish to merge categories for which there are only a few businesses into 'Other' category. 
@@ -243,40 +228,41 @@ Here we explore the relationship bewteen quantitaive predictors and the response
 **Note: in all plots below, popularity variable has been log-transformed. The predictors are also heavily right-skewed and we may consider log-transforming the predictors as well. For some predictors, the minimum value observed is zero; a small constant should be added to all values of the observation when performing log-transformation**
 
 
-```{r fig4, fig.height = 3.5, fig.width = 14, echo=FALSE}
+```{r fig4, fig.height = 3.5, fig.width = 13, echo=FALSE}
 par(mfrow=c(1,3))
-hist(vy$cool_review_pm, main="", xlab="Number of 'cool' votes reviews of a business received per month", cex.lab=2)
-hist(vy$funny_review_pm, main="", xlab="Number of 'funny' votes reviews of a business received per month", cex.lab=2)
-hist(vy$useful_review_pm, main="", xlab="Number of 'useful' votes reviews of a business received per month", cex.lab=2)
-summary(vy$cool_review_pm)
-summary(vy$funny_review_pm)
-summary(vy$useful_review_pm)
+hist(vy$cool_review_pm, main="", xlab="'cool' vote reviews per month")
+hist(vy$funny_review_pm, main="", xlab="'funny' vote reviews per month")
+hist(vy$useful_review_pm, main="", xlab="'useful' vote reviews per month")
 
-plot(popularity_log~cool_review_pm, data=vy, xlab="Number of 'cool' votes reviews of a business received per month", ylab="log (popularity)", cex.lab=2)
-plot(popularity_log~funny_review_pm, data=vy, xlab="Number of 'funny' votes reviews of a business received per month", ylab="log (popularity)", cex.lab=2)
-plot(popularity_log~useful_review_pm, data=vy, xlab="Number of 'useful' votes reviews of a business received per month", ylab="log (popularity)", cex.lab=2)
+output_df_rev <- data.frame(cool_review = as.numeric(summary(vy$cool_review_pm)), funny_review = as.numeric(summary(vy$funny_review_pm)), useful_review = as.numeric(summary(vy$useful_review_pm)), row.names = names(summary(vy$cool_review_pm)))
 
-plot(popularity_log~log(cool_review_pm), data=vy, xlab="log (Number of 'cool' votes reviews of a business received per month)", main="Predictor log-transformed", ylab="log (popularity)", cex.lab=2, cex.main=2)
-plot(popularity_log~log(funny_review_pm), data=vy, xlab="log (Number of 'funny' votes reviews of a business received per month)", main="Predictor log-transformed", ylab="log (popularity)", cex.lab=2, cex.main=2)
-plot(popularity_log~log(useful_review_pm), data=vy, xlab="log (Number of 'useful' votes reviews of a business received per month)", main="Predictor log-transformed", ylab="log (popularity)", cex.lab=2, cex.main=2)
+knitr::kable(output_df_rev)
+
+plot(popularity_log~cool_review_pm, data=vy, xlab="'cool' vote reviews per month", ylab="log (popularity)")
+plot(popularity_log~funny_review_pm, data=vy, xlab="'funny' vote reviews per month", ylab="log (popularity)")
+plot(popularity_log~useful_review_pm, data=vy, xlab="'useful' vote reviews per month", ylab="log (popularity)")
+
+plot(popularity_log~log(cool_review_pm), data=vy, xlab="log ('cool' vote reviews per month)", main="Predictor log-transformed", ylab="log (popularity)")
+plot(popularity_log~log(funny_review_pm), data=vy, xlab="log ('funny' vote reviews per month)", main="Predictor log-transformed", ylab="log (popularity)")
+plot(popularity_log~log(useful_review_pm), data=vy, xlab="log ('useful' vote reviews per month)", main="Predictor log-transformed", ylab="log (popularity)")
 ```
 
 'cool', 'funny', and 'useful' votes are highly right-skewed; we may consider log-transforming these predictors as well. There appears to be a strong positive relationship between popularity and the number of 'cool', 'funny', and 'useful' votes reviews of a business receive per month. 
 
 
 
-```{r fig11, fig.height = 3.5, fig.width = 14, echo=FALSE}
+```{r fig11, fig.height = 4.2, fig.width = 12, echo=FALSE}
 par(mfrow=c(1,2))
-hist(vy$elite_users_sum, main="", xlab="Number of elite-status reviewers for a business", cex.lab=2)
-hist(vy$review_users_mean, main="", xlab="Mean number of reviews written by reviewers of a business", cex.lab=2)
+hist(vy$elite_users_sum, main="", xlab="Number of elite-status reviewers for a business")
+hist(vy$review_users_mean, main="", xlab="Mean number of reviews written by reviewers of a business")
 #summary(vy$elite_users_sum)
 #summary(vy$review_users_mean)
 
-plot(popularity_log~elite_users_sum, data=vy, xlab="Number of elite-status reviewers for a business", ylab="log (popularity)", cex.lab=2)
-plot(popularity_log~review_users_mean, data=vy, xlab="Mean number of reviews written by reviewers of a business", ylab="log (popularity)", cex.lab=2)
+plot(popularity_log~elite_users_sum, data=vy, xlab="Number of elite-status reviewers for a business", ylab="log (popularity)")
+plot(popularity_log~review_users_mean, data=vy, xlab="Mean number of reviews written by reviewers of a business", ylab="log (popularity)")
 
-plot(popularity_log~log(elite_users_sum), data=vy, xlab="log (Number of elite-status reviewers for a business)", main="Predictor log-transformed", ylab="log (popularity)", cex.lab=2, cex.main=2)
-plot(popularity_log~log(review_users_mean), data=vy, xlab="log (Mean number of reviews written by reviewers of a business)", main="Predictor log-transformed", ylab="log (popularity)", cex.lab=2, cex.main=2)
+plot(popularity_log~log(elite_users_sum), data=vy, xlab="log (Number of elite-status reviewers for a business)", main="Predictor log-transformed", ylab="log (popularity)")
+plot(popularity_log~log(review_users_mean), data=vy, xlab="log (Mean number of reviews written by reviewers of a business)", main="Predictor log-transformed", ylab="log (popularity)")
 
 ```
 
@@ -285,9 +271,8 @@ The number of elite-status reviewers and mean number of reviews written by revie
 How 'active' reviewers of a business are, as proxied by the mean number of reviews written by reviewers of a business, may not be associated with the popularity of a business. There appears to be a positive association between the number of elite-status reviewers for a business and a business' popularity. This positive relationship may simply be due to the fact that businesses with a greater number of reviews (which was used to derive the popularity of a business) are also more likely to have a greater number elite-status reviewers. To correct for this, we should divide the number of elite-status reviewers for a business by the total number of reviews for a business. 
 
 
-```{r fig12, fig.height = 3.5, fig.width = 5, echo=FALSE}
-plot(popularity_log~log(elite_users_sum/review_count_business), data=vy, xlab="log (Number of elite-status reviewers for a business / Number of reviews for a business)", ylab="log (popularity)")
-
+```{r fig12, fig.height = 4.2, fig.width = 5, echo=FALSE}
+plot(popularity_log~log(elite_users_sum/review_count_business), data=vy, xlab="log (elite-status reviewers / #reviews)", ylab="log (popularity)")
 ```
 
 When we adjust the number of elite-status reviewers for a business by the number of reviews it received, we no longer see a strong positive relationship between the prevalence of elite-status reviewers and popularity of a business.  
@@ -296,16 +281,16 @@ When we adjust the number of elite-status reviewers for a business by the number
 
 ```{r fig13, fig.height = 3.5, fig.width = 14, echo=FALSE}
 par(mfrow=c(1,2))
-hist(vy$fans_users_mean, main="", xlab="Mean number of fans reviewers of a business have", cex.lab=2)
-hist(vy$friend_number_mean, main="", xlab="Mean number of friends reviewers of a business have", cex.lab=2)
+hist(vy$fans_users_mean, main="", xlab="Mean number of fans reviewers of a business have")
+hist(vy$friend_number_mean, main="", xlab="Mean number of friends reviewers of a business have")
 #summary(vy$fans_users_mean)
 #summary(vy$friend_number_mean)
 
-plot(popularity_log~fans_users_mean, data=vy, xlab="Mean number of fans reviewers of a business have", ylab="log (popularity)", cex.lab=2)
-plot(popularity_log~friend_number_mean, data=vy, xlab="Mean number of friends reviewers of a business have", ylab="log (popularity)", cex.lab=2)
+plot(popularity_log~fans_users_mean, data=vy, xlab="Mean number of fans reviewers of a business have", ylab="log (popularity)")
+plot(popularity_log~friend_number_mean, data=vy, xlab="Mean number of friends reviewers of a business have", ylab="log (popularity)")
 
-plot(popularity_log~log(fans_users_mean), data=vy, xlab="log (Mean number of fans reviewers of a business have)", main="Predictor log-transformed", ylab="log (popularity)", cex.lab=2, cex.main=2)
-plot(popularity_log~log(friend_number_mean), data=vy, xlab="log (Mean number of friends reviewers of a business have)", main="Predictor log-transformed", ylab="log (popularity)", cex.lab=2, cex.main=2)
+plot(popularity_log~log(fans_users_mean), data=vy, xlab="log (Mean number of fans reviewers of a business have)", main="Predictor log-transformed", ylab="log (popularity)")
+plot(popularity_log~log(friend_number_mean), data=vy, xlab="log (Mean number of friends reviewers of a business have)", main="Predictor log-transformed", ylab="log (popularity)")
 
 ```
 
@@ -313,25 +298,25 @@ There does not appear to be a strong association between the mean number of fans
 
 ```{r fig14, fig.height = 3.5, fig.width = 14, echo=FALSE}
 par(mfrow=c(1,2))
-hist(vy$fan_outlier_count, main="", xlab="Number of reviewers with outlier fan counts for a business", cex.lab=2)
-hist(vy$friend_outlier_count, main="", xlab="Number of reviewers with outlier friend counts for a business", cex.lab=2)
+hist(vy$fan_outlier_count, main="", xlab="Number of reviewers with outlier fan counts for a business")
+hist(vy$friend_outlier_count, main="", xlab="Number of reviewers with outlier friend counts for a business")
 #summary(vy$fan_outlier_count)
 #summary(vy$friend_outlier_count)
 
-plot(popularity_log~fan_outlier_count, data=vy, xlab="Number of reviewers with outlier fan counts for a business", ylab="log (popularity)", cex.lab=2)
-plot(popularity_log~friend_outlier_count, data=vy, xlab="Number of reviewers with outlier friend counts for a business", ylab="log (popularity)", cex.lab=2)
+plot(popularity_log~fan_outlier_count, data=vy, xlab="Number of reviewers with outlier fan counts for a business", ylab="log (popularity)")
+plot(popularity_log~friend_outlier_count, data=vy, xlab="Number of reviewers with outlier friend counts for a business", ylab="log (popularity)")
 
-plot(popularity_log~log(fan_outlier_count), data=vy, xlab="log (Number of reviewers with outlier fan counts for a business)", main="Predictor log-transformed", ylab="log (popularity)", cex.lab=2, cex.main=2)
-plot(popularity_log~log(friend_outlier_count), data=vy, xlab="log (Number of reviewers with outlier friend counts for a business)", main="Predictor log-transformed", ylab="log (popularity)", cex.lab=2, cex.main=2)
+plot(popularity_log~log(fan_outlier_count), data=vy, xlab="log (Number of reviewers with outlier fan counts for a business)", main="Predictor log-transformed", ylab="log (popularity)")
+plot(popularity_log~log(friend_outlier_count), data=vy, xlab="log (Number of reviewers with outlier friend counts for a business)", main="Predictor log-transformed", ylab="log (popularity)")
 
 ```
 There appears to be a positive correlation between the number of reviewers with outlier fan/friend counts for a business and the popularity of a business: businesses that have greater of number reviewers with a lot of fans or friends tend to be more popular. Again, the positive correlation between the response and these predictors may simply be due to the fact that businesses that have more reviews (thus greater popularity) are more likely to have greater number of reviewers with outlier fan/friend counts. As before, we adjust the number of reviewers with outlier fan/friend counts by dividing by the total number of reviews for the business. 
 
 ```{r fig15, fig.height = 3.5, fig.width = 14, echo=FALSE}
 par(mfrow=c(1,2))
-plot(popularity_log~log(fan_outlier_count/review_count_business), data=vy, xlab="log (Number of reviewers with outlier fan counts for a business / Number of reviews)", ylab="log (popularity)", cex.lab=2, cex.main=2)
+plot(popularity_log~log(fan_outlier_count/review_count_business), data=vy, xlab="log (Number of reviewers with outlier fan counts for a business / Number of reviews)", ylab="log (popularity)")
 
-plot(popularity_log~log(friend_outlier_count/review_count_business), data=vy, xlab="log (Number of reviewers with outlier friend counts for a business / Number of reviews)", ylab="log (popularity)", cex.lab=2, cex.main=2)
+plot(popularity_log~log(friend_outlier_count/review_count_business), data=vy, xlab="log (Number of reviewers with outlier friend counts for a business / Number of reviews)", ylab="log (popularity)")
 
 ```
 
@@ -372,12 +357,7 @@ pairs(~cool_users_mean+funny_users_mean+useful_users_mean+review_users_mean+fans
 ```
 There are very strong positive correlations between the reviewer related variables. Take for example, the greater the mean number of 'useful' votes a business' reviewers gave on Yelp overall, the greater the mean number of 'cool' and 'funny' votes they gave on Yelp overall. The mean number of friends and the mean number of fans a business' reviewers have are positively correlated with each other. The mean number of reviews by a business' reviewers on Yelp overall is also highly correlated with all other reviwer related variables. Given the strong positive correlation between the various reviewer related variables, we should consider using only a subset of them in our models. 
 
-
-# Assumptions
-
-1. Missing users are missing completely at random from the dataset and so therefore will not skew our calculations for business user statistics.
-2. 
-
+\vspace{48pt}
 
 # Next Steps
 Performing this EDA has illuminated some issues that we will resolve in our next iteration for modeling.
@@ -474,9 +454,33 @@ Performing this EDA has illuminated some issues that we will resolve in our next
 |74 | friend_outlier_count | users | number of users who reviewed who are considered an outlier in terms of their number of friends|
 Table: Metadata for our final cleaned dataframe
 
-### 1.2 - Data Processing Code
+### 1.2 - Full Data Distributions
 
-#### 1.2.1 - Read and Chunk Data
+```{r, echo=FALSE}
+knitr::kable(vy_summary[,1:4])
+knitr::kable(vy_summary[,5:8])
+knitr::kable(vy_summary[,9:12])
+knitr::kable(vy_summary[,13:16])
+knitr::kable(vy_summary[,17:20])
+knitr::kable(vy_summary[,21:24])
+knitr::kable(vy_summary[,25:28])
+knitr::kable(vy_summary[,29:32])
+knitr::kable(vy_summary[,33:36])
+knitr::kable(vy_summary[,37:40])
+knitr::kable(vy_summary[,41:44])
+knitr::kable(vy_summary[,45:48])
+knitr::kable(vy_summary[,49:52])
+knitr::kable(vy_summary[,53:56])
+knitr::kable(vy_summary[,57:60])
+knitr::kable(vy_summary[,61:64])
+knitr::kable(vy_summary[,65:68])
+knitr::kable(vy_summary[,69:72])
+knitr::kable(vy_summary[,73:77])
+```
+
+### 1.3 - Data Processing Code
+
+#### 1.3.1 - Read and Chunk Data
 
 Python code to read in the raw data and deal with the large JSON files.
 
@@ -527,7 +531,7 @@ reviews_df.to_csv(output_review_name)
 ```
 
 
-#### 1.2.2 - Clean User Data
+#### 1.3.2 - Clean User Data
 
 Python code to take the user data, calculate statistics and 
 
@@ -692,7 +696,7 @@ reviews_join_user_food.reset_index(inplace=True)
 reviews_join_user_food.to_csv('data/vegas_business_user_info.csv', index=False)
 ```
 
-#### 1.2.3 - Clean Business Tables and EDA
+#### 1.3.3 - Clean Business Tables and EDA
 
 Python code to clean and process business attributes
 
@@ -938,7 +942,7 @@ FinalFood.to_csv('vegas_food_businesses_clean.csv')
 ```
 
 
-#### 1.2.4 - Join Tables into Final Dataset
+#### 1.3.4 - Join Tables into Final Dataset
 
 Python code to join all the tables together into one clean dataset
 
