@@ -50,7 +50,18 @@ Further possible questions:
 
 The data came in multiple JSON files each explaining it's own subset of the overall Yelp dataset. For our purposes the most relevant tables are businessess (a full list of all businesses with unique *business_id*), reviews (a full list of all reviews for those business with a link to the the user who wrote it: unique *business_id*, unique *review_id*, unique *user_id*) and users (all the user information for those reviews: unique *user_id*).
 
-In order to begin modelling we first had to combine all these tables into a clean dataset. To do this though as the tables were too large to keep in memory we decided to cut down the scope from all USA food businesses
+In order to begin modelling we first had to combine all these tables into a clean dataset. To do this though as the tables were too large to keep in memory we decided to cut down the scope from all USA food businesses to just Las Vegas, which was the largest city for number of food businesses, and so this reduced the initial business list down to just 30,000 unique businesses. From here the data processing was as follows:
+
+1. Run through all Reviews in chunks and keep only those corresponding to the 30,000 unique businesses. (Later on in the business processing this would be reduced again to just food businesses).
+2. Resolve a list of unique review_ids from those remaining reviews
+3. Run through all Users in chunks and keep only those corresponding to the remaining reviews.
+4. Clean and aggregate the business categorical and attribute information (see below)
+5. Clean and aggregate the review data to business level - calculate sum and mean statistics for counts such as "cool" and "funny" reviews
+6. Clean the user table and compute relevant statistics such as 'outlier' reviewers and 'elite' reviewers
+7. Left join the user data onto the review data (keep all rows from review and join in user information)
+8. Left join the user/review table onto the business table
+
+These steps can be seen in the flow diagram below (figure 1).
 
 ```{r, echo=FALSE,fig.cap="\\label{fig:figs}Top Food Related Business Categories"}
 library(png)
@@ -100,9 +111,38 @@ After filtering out the non-relevant attributes, we also needed to one-hot encod
 
 ## User Data Processing
 
+As the user data is already at a single row of data per user there was no aggregation required. However to get the most out of the users table we need relevant statistics that will eventually be aggregated up to business level for the final dataset. Hence much of the original user information would be of little use at this higher aggregate level.
+
+To overcome this we decided to focus on a number of key user statistics that would be helpful at business level:
+
+* Users with "outlier" number of friends/fans
+* Users with elite status
+* Users friend network
+* Users activity
 
 
+#### NA issues in User Data
 
+One of the biggest issues with processing the user data is that the data is not a perfect subset of the reviews data. Our initial hypothesis on the data is that Yelp had provided a subset of businesses throughout the US and their relevant reviews and user data. However this was incorrect. Whilst the review data did match up well to the businesses, the users did not match up anywhere near so neatly to the reviews table.
+
+In fact on for most businesses reviews we only have around 65-70% of the user data. The remaining 30-35% of user information is entirely missing from the provided data. In essence this means we are missing data on a third of the users who wrote the reviews on our businesses of interest. 
+
+Aggregating the data from individual review to business level overcomes a lot of the processing issues (in terms of NAs) although we do need to be aware that our user information is not built upon complete data. An example:
+
+| Business_id | Review_id         | User_id | Number_of_friends |
+| --------- | ---------------- | ----- | -------- |
+| Restaurant_1 | Review 1      | UserA | 10 |
+| Restaurant_1 | Review 2         | UserB | 50 |
+| Restaurant_1 | Review 3    | NA | NA |
+| Restaurant_1 | Review 4 | UserC | 90 |
+
+So when this data is aggregated up to business level there aren't any overall NAs - we have enough data to compute the average statistics we need for the analysis:
+
+| Business_id |  Total_Number_of_friends |
+| --------- | ------- |
+| Restaurant_1 | 150 |
+
+However this means that we are assuming that our data on users is missing totally at random and that on average our missing data should not skew or effect the statistics we compute for each business. In this case the missing user could have had 10,000 friends and therefore the reviews would be reaching a much larger audience than we would see in the data. There is however no way to impute this data and so this is an assumption we have to live with and will be noted alongside any results.
 
 # EDA
 
@@ -112,16 +152,16 @@ We wish to learn what attributes of a restaurant contribute to the popularity of
 $\frac{\text{Number of check-in's} + \text{Number of Yelp reviews}}{\text{Number of months open}}$
 
 The total sum of check-in's and reviews for a business is divided by how long the business has been open to make the popularity measure comparable across businesses that have been open for different durations. The Yelp dataset does not provide information about how long a business has been open; the number of months a business has been open was approximated by computing the difference in the latest and oldest dates of reviews or check-in's. 
-```{r}
+```{r, echo=FALSE}
 vy <- read.csv("data/vegas_yelp_dataset.csv")
 ```
 
-```{r}
+```{r, echo=FALSE}
 vy$popularity <- (vy$review_count_business + vy$checkin_count) / vy$months_open
 
 # explore distribution of 'popularity' response variable
 popularity = vy$popularity
-summary(popularity)
+knitr::kable(summary(popularity))
 hist(popularity, main="Distribution of Popularity",col="grey")
 
 # look at the spread of popularity for businesses with 
@@ -149,12 +189,31 @@ The median popularity of restaurants is approximately 4.41 and 75% of restaurant
 
 Not all features included in the dataset may be suitable for predicting popularity of restaurants: for example, certain features may have too many missing observations or several features may be highly correlated with one another. Here we explore 1) how certain features are distributed across businesses 2) missingness and potential multicollinearity issues in predictors 2) relationship between popularity and the predictors 
 
-```{r}
-summary(vy)
+```{r, echo=FALSE}
+vy_summary <- summary(vy)
+knitr::kable(vy_summary[,1:4])
+knitr::kable(vy_summary[,5:8])
+knitr::kable(vy_summary[,9:12])
+knitr::kable(vy_summary[,13:16])
+knitr::kable(vy_summary[,17:20])
+knitr::kable(vy_summary[,21:24])
+knitr::kable(vy_summary[,25:28])
+knitr::kable(vy_summary[,29:32])
+knitr::kable(vy_summary[,33:36])
+knitr::kable(vy_summary[,37:40])
+knitr::kable(vy_summary[,41:44])
+knitr::kable(vy_summary[,45:48])
+knitr::kable(vy_summary[,49:52])
+knitr::kable(vy_summary[,53:56])
+knitr::kable(vy_summary[,57:60])
+knitr::kable(vy_summary[,61:64])
+knitr::kable(vy_summary[,65:68])
+knitr::kable(vy_summary[,69:72])
+knitr::kable(vy_summary[,73:77])
 ```
 
 ## Distribution of Predictors across Businesses
-```{r}
+```{r, echo=FALSE}
 # check data types of variables
 #sapply(vy, class)
 
@@ -164,15 +223,15 @@ vy$RestaurantsPriceRange2 <- factor(vy$RestaurantsPriceRange2)
 
 TopCategory variable indicates the 'main' cuisine or food cateogry a business serves. We explore how many different categories exist and the number of businesses associated for each of the categories
 
-```{r}
+```{r, echo=FALSE}
 n_topcategories = length(unique(vy$TopCategory))
 category_table = table(vy$TopCategory)
 category_df = as.data.frame(category_table)
 colnames(category_df)[colnames(category_df)=="Var1"] <- "Category"
 colnames(category_df)[colnames(category_df)=="Freq"] <- "Frequency"
 
-category_df <- category_df[order(category_df$Frequency, decreasing = TRUE),]
-category_df
+category_df <- category_df[order(category_df$Frequency, decreasing = TRUE),][1:15,]
+knitr::kable(category_df)
 ```
 
 There are `r n_topcategories` different food categories. We may wish to merge categories for which there are only a few businesses into 'Other' category. 
@@ -184,7 +243,7 @@ Here we explore the relationship bewteen quantitaive predictors and the response
 **Note: in all plots below, popularity variable has been log-transformed. The predictors are also heavily right-skewed and we may consider log-transforming the predictors as well. For some predictors, the minimum value observed is zero; a small constant should be added to all values of the observation when performing log-transformation**
 
 
-```{r fig4, fig.height = 3.5, fig.width = 14}
+```{r fig4, fig.height = 3.5, fig.width = 14, echo=FALSE}
 par(mfrow=c(1,3))
 hist(vy$cool_review_pm, main="", xlab="Number of 'cool' votes reviews of a business received per month", cex.lab=2)
 hist(vy$funny_review_pm, main="", xlab="Number of 'funny' votes reviews of a business received per month", cex.lab=2)
@@ -206,7 +265,7 @@ plot(popularity_log~log(useful_review_pm), data=vy, xlab="log (Number of 'useful
 
 
 
-```{r fig11, fig.height = 3.5, fig.width = 14}
+```{r fig11, fig.height = 3.5, fig.width = 14, echo=FALSE}
 par(mfrow=c(1,2))
 hist(vy$elite_users_sum, main="", xlab="Number of elite-status reviewers for a business", cex.lab=2)
 hist(vy$review_users_mean, main="", xlab="Mean number of reviews written by reviewers of a business", cex.lab=2)
@@ -226,7 +285,7 @@ The number of elite-status reviewers and mean number of reviews written by revie
 How 'active' reviewers of a business are, as proxied by the mean number of reviews written by reviewers of a business, may not be associated with the popularity of a business. There appears to be a positive association between the number of elite-status reviewers for a business and a business' popularity. This positive relationship may simply be due to the fact that businesses with a greater number of reviews (which was used to derive the popularity of a business) are also more likely to have a greater number elite-status reviewers. To correct for this, we should divide the number of elite-status reviewers for a business by the total number of reviews for a business. 
 
 
-```{r fig12, fig.height = 3.5, fig.width = 5}
+```{r fig12, fig.height = 3.5, fig.width = 5, echo=FALSE}
 plot(popularity_log~log(elite_users_sum/review_count_business), data=vy, xlab="log (Number of elite-status reviewers for a business / Number of reviews for a business)", ylab="log (popularity)")
 
 ```
@@ -235,7 +294,7 @@ When we adjust the number of elite-status reviewers for a business by the number
 
 
 
-```{r fig13, fig.height = 3.5, fig.width = 14}
+```{r fig13, fig.height = 3.5, fig.width = 14, echo=FALSE}
 par(mfrow=c(1,2))
 hist(vy$fans_users_mean, main="", xlab="Mean number of fans reviewers of a business have", cex.lab=2)
 hist(vy$friend_number_mean, main="", xlab="Mean number of friends reviewers of a business have", cex.lab=2)
@@ -252,7 +311,7 @@ plot(popularity_log~log(friend_number_mean), data=vy, xlab="log (Mean number of 
 
 There does not appear to be a strong association between the mean number of fans/friends reviewers of a business have and the popularity of a business. 
 
-```{r fig14, fig.height = 3.5, fig.width = 14}
+```{r fig14, fig.height = 3.5, fig.width = 14, echo=FALSE}
 par(mfrow=c(1,2))
 hist(vy$fan_outlier_count, main="", xlab="Number of reviewers with outlier fan counts for a business", cex.lab=2)
 hist(vy$friend_outlier_count, main="", xlab="Number of reviewers with outlier friend counts for a business", cex.lab=2)
@@ -268,7 +327,7 @@ plot(popularity_log~log(friend_outlier_count), data=vy, xlab="log (Number of rev
 ```
 There appears to be a positive correlation between the number of reviewers with outlier fan/friend counts for a business and the popularity of a business: businesses that have greater of number reviewers with a lot of fans or friends tend to be more popular. Again, the positive correlation between the response and these predictors may simply be due to the fact that businesses that have more reviews (thus greater popularity) are more likely to have greater number of reviewers with outlier fan/friend counts. As before, we adjust the number of reviewers with outlier fan/friend counts by dividing by the total number of reviews for the business. 
 
-```{r fig15, fig.height = 3.5, fig.width = 14}
+```{r fig15, fig.height = 3.5, fig.width = 14, echo=FALSE}
 par(mfrow=c(1,2))
 plot(popularity_log~log(fan_outlier_count/review_count_business), data=vy, xlab="log (Number of reviewers with outlier fan counts for a business / Number of reviews)", ylab="log (popularity)", cex.lab=2, cex.main=2)
 
@@ -284,14 +343,14 @@ There are missing values for multiple features
 - 26 businesses do not have any information about their reviewers
 - Missing values are prevalent for categorical variables (e.g. BikeParking, HasTV, RestaurantsGoodForGroups, etc.)
 
-```{r}
+```{r, echo=FALSE}
 # replace blanks with NA
 for (i in 2:ncol(vy)){
   vy[,i][vy[,i] == ""] <- NA
 }
 ```
 
-```{r}
+```{r, echo=FALSE}
 # get number of businesses with complete observations 
 n_complete <- nrow(vy[complete.cases(vy),])
 ```
@@ -305,7 +364,7 @@ The dataset contains information about the reviewers of a business. For example,
 
 *Each reviewer has a total number of reviews that he/she has written on Yelp, not just for that single business. We took these review counts and averaged across reviewers of a business.   
 
-```{r fig16, fig.height = 10, fig.width = 10}
+```{r fig16, fig.height = 10, fig.width = 10, echo=FALSE}
 # scatter plots of reviewer related variables 
 pairs(~cool_users_mean+funny_users_mean+useful_users_mean+review_users_mean+fans_users_mean+friend_number_mean,
       data=vy, main="Scatterplots of reviewer related variables")
@@ -314,7 +373,10 @@ pairs(~cool_users_mean+funny_users_mean+useful_users_mean+review_users_mean+fans
 There are very strong positive correlations between the reviewer related variables. Take for example, the greater the mean number of 'useful' votes a business' reviewers gave on Yelp overall, the greater the mean number of 'cool' and 'funny' votes they gave on Yelp overall. The mean number of friends and the mean number of fans a business' reviewers have are positively correlated with each other. The mean number of reviews by a business' reviewers on Yelp overall is also highly correlated with all other reviwer related variables. Given the strong positive correlation between the various reviewer related variables, we should consider using only a subset of them in our models. 
 
 
-# Baseline Modelling?
+# Assumptions
+
+1. Missing users are missing completely at random from the dataset and so therefore will not skew our calculations for business user statistics.
+2. 
 
 
 # Next Steps
