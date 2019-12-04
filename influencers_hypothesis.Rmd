@@ -1,0 +1,200 @@
+---
+title: "Investigate Influencers"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(glmnet)
+library(corrplot)
+library(dummies)
+library(stringr)
+```
+
+```{r}
+yelp_data <- read.csv('data/final_yelp_vegas_dataset.csv')
+yelp_data <- yelp_data %>% mutate(user_activity = log2(user_activity))
+```
+
+Need to clean the datatypes to correctly represent categorical (factors)
+```{r}
+columns_to_factor <- c("BikeParking", "RestaurantsPriceRange2", "HasTV", "RestaurantsGoodForGroups", "OutdoorSeating", 
+                       "RestaurantsReservations", "GoodForKids", "BusinessAcceptsCreditCards", "Caters", "RestaurantsTakeOut",
+                       "RestaurantsDelivery", "garage", "lot", "street", "valet", "validated", "casual", "classy", "divey", 
+                       "hipster", "intimate", "romantic", "touristy", "trendy", "upscale", "breakfast", "brunch", "dessert", 
+                       "dinner", "latenight", "lunch")
+
+for (i in 1:length(columns_to_factor)) {
+  yelp_data[[columns_to_factor[i]]] <- as.factor(yelp_data[[columns_to_factor[i]]])
+}
+```
+
+```{r}
+# log transform heavily right-skewed predictors
+predictors_trans <- c("cool_review_pm", "funny_review_pm", "useful_review_pm", "cool_users_mean", "fans_users_mean", "funny_users_mean", "useful_users_mean", "friend_number_mean", "reviews_users_pm_mean")
+
+# check which variables have zeros
+sapply(yelp_data[predictors_trans], summary)
+
+# add a small constant to predictors with zero values
+yelp_data$cool_review_pm <- yelp_data$cool_review_pm + 0.01
+yelp_data$funny_review_pm <- yelp_data$funny_review_pm + 0.01
+yelp_data$cool_users_mean <- yelp_data$cool_users_mean + 0.01
+yelp_data$fans_users_mean <- yelp_data$fans_users_mean + 0.01
+yelp_data$funny_users_mean <- yelp_data$funny_users_mean + 0.01
+
+# log transform variables in 'predictors_trans'
+yelp_data[predictors_trans] <- sapply(yelp_data[predictors_trans], log2)
+```
+
+```{r}
+set.seed(123)
+sample = sample.split(yelp_data, SplitRatio=0.8)
+train_split = subset(yelp_data, sample==TRUE)
+test = subset(yelp_data, sample==FALSE)
+
+sample2 = sample.split(train_split, SplitRatio=0.8)
+train = subset(train_split, sample2==TRUE)
+validation = subset(train_split, sample2==FALSE)
+```
+
+
+## Look into Influencers Specifically
+
+### Hypothesis
+
+Restaurants which have a higher proportion of reviews written by those who are influencers. A reviewer is deemed to be an influencer if they have either:
+  1. Have had or current have 'elite' status
+  2. Have an outlier number of friends (1.5*IQR of number of friends across the whole of Vegas users)
+  3. Have an outlier number of fans (1.5*IQR of number of fans across the whole of Vegas users)
+  
+Elite status - a designation given by Yelp to certain users. A quatation from the Yelp website: "Elite-worthiness is based on a number of things, including well-written reviews, high quality photos, a detailed personal profile, and a history of playing well with others". Although what this means in practice is relatively unknown.
+
+Outlier number of friends - a variable derived in order to flag in a simple manner whether users have a lot of friends compared to the average user. It uses the traditional heuristic for outlier of flagging any users whose friend counts are 1.5*IQR above the third quartile. For yelp users this corresponds to friend number above 131. This is then aggregated up to the number of users who had outlier_friend status who reviewed a given restaurant and taken as a proportion of overall reviews to decouple from the actual number of reviews received.
+
+Outlier number of fans - exactly the same as above but regarding the number of fans a user has not friends. Due to the relatively low numbers of fans across the dataset to be regarded as an outlier in terms of fan number it is only required that a user has 3 or more fans.
+
+Check response
+```{r}
+ggplot(train, aes(x=user_activity)) + geom_histogram(bins = 20)
+```
+
+Check relationship and correlations
+```{r}
+ggplot(train, aes(x=elite_users_prop, y=user_activity)) + geom_point(colour='#ec6b2d')
+ggplot(train, aes(x=fan_outlier_prop, y=user_activity)) + geom_point(colour='#0098d8')
+ggplot(train, aes(x=friend_outlier_prop, y=user_activity)) + geom_point(colour='#3dbd5d')
+```
+
+
+
+```{r}
+suspected_cor_columns <- c('elite_users_prop', 'fan_outlier_prop', 'friend_outlier_prop', 'friend_number_mean', 'reviews_users_pm_mean',
+                           'useful_users_mean', 'funny_users_mean', 'fans_users_mean', 'cool_users_mean', 'fans_users_mean', 
+                           'useful_review_pm', 'funny_review_pm', 'cool_review_pm', 'user_activity')
+
+train_quant <- train %>% select(-X, -business_id, -TopCategory, -Alcohol, -NoiseLevel, -WiFi, -RestaurantsAttire)
+train_quant_interest <- train_quant %>% select(suspected_cor_columns)
+train_quant_interest_corr <-cor(train_quant_interest)
+
+corrplot(train_quant_interest_corr, method = "number")
+```
+
+```{r}
+suspected_cor_columns <- c('elite_users_prop', 'fan_outlier_prop', 'friend_outlier_prop', 'user_activity')
+
+train_quant <- train %>% select(-X, -business_id, -TopCategory, -Alcohol, -NoiseLevel, -WiFi, -RestaurantsAttire)
+train_quant_interest <- train_quant %>% select(suspected_cor_columns)
+train_quant_interest_corr <-cor(train_quant_interest)
+
+corrplot(train_quant_interest_corr, method = "number")
+```
+
+It appears that elite users and fan outliers are very highly correlated and therefore including them both may increase the standard errors around the coefficient estimates. In order to overcome this, **elite_users_prop** will be dropped from the dataset due to the lack of firm mathematical information for how this designation is handed out.
+
+Therefore just keep fan_outlier_prop and friend_outlier_prop (derived variables) for testing.
+
+First remove these two variables (and the multicovariate elite_users) from consideration and pick the best model using LASSO approaches as this can be validated on the validation dataset to reduce bias from the specific randomness of the train data
+```{r}
+lm_for_formula <- lm(user_activity ~ .-X - business_id -fan_outlier_prop -friend_outlier_prop -elite_users_prop -user_activity, data=train)
+
+design_matrix <- model.matrix(formula(lm_for_formula), data=train)[,-c(1)]
+design_matrix_test <- model.matrix(formula(lm_for_formula), data=test)[,-c(1)]
+
+
+lambdas = c(0.0001, 0.00025, 0.0005, 0.00075, 0.001, 0.0025, 0.005, 0.0075, 0.01, 0.025, 0.05,
+            0.075, 0.1, 0.25, 0.5, 0.0075, 1)
+
+val_scores = rep(NA, length(lambdas))
+
+for(i in 1:length(lambdas)) {
+  cur_lambda <- lambdas[i]
+  cur_model <- glmnet(design_matrix, train$user_activity, alpha=1, lambda = cur_lambda)
+  
+  cur_y_pred <- predict(cur_model, design_matrix_test)
+  score_df <- data.frame(cur_y_pred, test$user_activity)
+  score_df <- score_df %>% mutate(diff = cur_y_pred - test$user_activity) %>%
+                           mutate(sq_diff = diff**2)
+  cur_SSE <- sum(score_df$sq_diff)
+  val_scores[i] <- cur_SSE
+}
+
+best_lambda <- lambdas[which.min(val_scores)]
+
+# Add in a slight amount more regularization for a more parsimonious model
+regularized_model <- glmnet(design_matrix, train$user_activity, alpha=1, lambda = best_lambda + best_lambda/2)
+lasso_coefficients <- as.data.frame(summary(regularised_model$beta)) %>% select(-j)
+
+lasso_keep_indices <- lasso_coefficients$i
+sig_cols <- colnames(design_matrix)[lasso_keep_indices]
+```
+
+Given that we now have the significant columns we wish to keep, first one hot encode the relevant categorical variables in order to select just some factor levels.
+```{r}
+train_category_dummy <- dummy('TopCategory', data = train)
+test_category_dummy <- dummy('TopCategory', data = test)
+train_alcohol_dummy <- dummy('Alcohol', data = train)
+test_alcohol_dummy <- dummy('Alcohol', data = test)
+train_noise_dummy <- dummy('NoiseLevel', data = train)
+test_noise_dummy <- dummy('NoiseLevel', data = test)
+train_wifi_dummy <- dummy('WiFi', data = train)
+test_wifi_dummy <- dummy('WiFi', data = test)
+
+train_sig <- cbind(train, train_category_dummy, train_alcohol_dummy, train_noise_dummy, train_wifi_dummy)
+test_sig <- cbind(test, test_category_dummy, test_alcohol_dummy, test_noise_dummy, test_wifi_dummy)
+```
+
+Create a formula with just variables we care about
+```{r}
+keep_cols <- c(sig_cols, 'user_activity')
+
+# Remove the 1's from names
+for(i in 1:length(keep_cols)){
+  keep_cols[i] <- str_replace(keep_cols[i], '1', '')
+  keep_cols[i] <- str_replace(keep_cols[i], '4', '')
+}
+
+# get formula
+lm_for_sig_formula <- lm(user_activity ~., data=train_sig[keep_cols])
+formula(lm_for_sig_formula)
+```
+
+Update the formula to add back in the variables of interest
+```{r}
+hypothesis_influencer_formula <- update(formula(lm_for_sig_formula), ~ . + fan_outlier_prop + friend_outlier_prop)
+```
+
+Fit a linear model
+```{r}
+hypothesis_influencer_lm <- lm(hypothesis_influencer_formula, data=train_sig)
+summary(hypothesis_influencer_lm)
+```
+
+
+
+
+
+
+
+
